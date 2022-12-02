@@ -1,0 +1,79 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    druid:
+      url: jdbc:mysql://localhost:3306/rdp?useUnicode=true&characterEncoding=utf-8&useSSL=false
+      username: root
+      password: 123456
+      ##-----------池大小设置-------------
+      initial-size: 5
+      max-active: 20
+      min-idle: 5
+      ##------------时间设置-------------
+      #配置获取连接等待超时的时间
+      max-wait: 60000
+      #配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      #配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      max-evictable-idle-time-millis: 900000
+      pool-prepared-statements: false
+      test-on-borrow: false
+      test-on-return: false
+      test-while-idle: true
+      #慢查询
+      connection-properties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
+      ##------------监视器配置---------------
+      #监视类型
+      filters: stat,wall,stat,slf4j,default
+      #web端监视
+      web-stat-filter:
+        enabled: true
+        url-pattern: /*
+        exclusions: "*.js,*.gif,*.jpg,*.bmp,*.png,*.css,*.ico,/druid/*"
+      #监控师徒配置
+      stat-view-servlet:
+        enabled: true
+        url-pattern: "/druid/*"
+        reset-enable: true
+        login-username: admin
+        login-password: 123456
+      filter:
+        slf4j:
+          enabled: true
+          statement-create-after-log-enabled: false
+          statement-log-enabled: false
+          statement-executable-sql-log-enable: true
+          statement-log-error-enabled: true
+          result-set-log-enabled: false
+
+  ldap:
+    urls: ldap://HQCQ-DC01.zy-ivd.com:389
+    base: DC=zy-ivd,DC=com
+    username: CN=rdpadmin,OU=ServiceAccounts,OU=Admins,OU=02-HQCQ,DC=zy-ivd,DC=com
+    password: 8bnP6N3GyOK917OxKGuS
+    template:
+      ignore-partial-result-exception: true
+
+logging:
+  level:
+    com.rdp.management.mapper: debug
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false
+
+jwt:
+  header: "Authorization"
+  tokenPrefix: "Bearer"
+  secret: abcdefg1234567
+  expire: 7200
+
+ad-manager:
+  host: http://192.168.9.225:8030
+  login: /RestAPI/APIAuthToken
+  addGroup: /RestAPI/AddUsersToGroup
+  loginName: itadapi
+  password: scye$197tkuyx75839
