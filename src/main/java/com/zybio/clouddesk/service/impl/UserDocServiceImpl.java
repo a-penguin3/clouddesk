@@ -7,7 +7,6 @@ import com.zybio.clouddesk.config.EncryptConfig;
 import com.zybio.clouddesk.enums.Regions;
 import com.zybio.clouddesk.pojo.dto.RegionDTO;
 import com.zybio.clouddesk.service.UserDocService;
-import com.zybio.clouddesk.thread.FileDecodeThread;
 import com.zybio.clouddesk.utils.FtpUtils;
 import com.zybio.clouddesk.utils.WebServiceUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -21,10 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.rmi.RemoteException;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Service
 @Slf4j
@@ -81,7 +77,7 @@ public class UserDocServiceImpl implements UserDocService {
                     File res = new File(filePath);
                     file.transferTo(res);
                 }
-                executor.execute(() -> {
+                Future<?> future = executor.submit(() -> {
                     log.info(Thread.currentThread().getName() + "--- 开始解密文件" + filePath + new Date() + " ---");
                     long res = 0;
                     try {
@@ -101,12 +97,15 @@ public class UserDocServiceImpl implements UserDocService {
                     }
                     countDownLatch.countDown();
                 });
+                future.get();
             }
             countDownLatch.await();
             return "上传成功";
         } catch (IOException | InterruptedException e) {
             log.error("上传文件失败：" + e);
             throw new BusinessException("500", "上传文件失败:" + e);
+        } catch (ExecutionException e) {
+            throw new BusinessException("500","上传文件失败:" + e);
         }
     }
 
@@ -167,7 +166,7 @@ public class UserDocServiceImpl implements UserDocService {
                 }
             }
             return "上传成功";
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("上传文件失败：" + e);
             throw new BusinessException("500", "上传文件失败:" + e);
         }
