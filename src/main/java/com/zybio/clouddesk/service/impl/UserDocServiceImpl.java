@@ -1,13 +1,16 @@
 package com.zybio.clouddesk.service.impl;
 
+import cn.hutool.extra.ssh.JschUtil;
+import cn.hutool.extra.ssh.Sftp;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.jcraft.jsch.SftpProgressMonitor;
 import com.purgeteam.cloud.dispose.starter.exception.category.BusinessException;
 import com.zybio.clouddesk.config.EncryptConfig;
+import com.zybio.clouddesk.config.ProgressMonitor;
 import com.zybio.clouddesk.enums.Regions;
 import com.zybio.clouddesk.pojo.dto.RegionDTO;
 import com.zybio.clouddesk.service.UserDocService;
-import com.zybio.clouddesk.utils.FtpUtils;
 import com.zybio.clouddesk.utils.WebServiceUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +22,10 @@ import javax.xml.rpc.ServiceException;
 import java.io.File;
 import java.io.IOException;
 import java.rmi.RemoteException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 
 @Service
@@ -29,8 +35,16 @@ public class UserDocServiceImpl implements UserDocService {
     @Value("${file.path}")
     private String filePath;
 
-    @Autowired
-    private FtpUtils ftpUtils;
+    @Value("${ftp.server}")
+    private String hostname;
+    @Value("${ftp.port}")
+    private int port;
+    @Value("${ftp.userName}")
+    private String username;
+    @Value("${ftp.password}")
+    private String password;
+
+    private final SftpProgressMonitor progressMonitor = new ProgressMonitor();
 
     @Autowired
     private WebServiceUtils webUtils;
@@ -69,6 +83,7 @@ public class UserDocServiceImpl implements UserDocService {
 
         try {
             CountDownLatch countDownLatch = new CountDownLatch(files.length);
+            Sftp sftp = JschUtil.createSftp(hostname, port, username, password);
             for (MultipartFile file : files) {
                 String fileName = file.getOriginalFilename();
                 String filePath = fileDir + "\\" + fileName;
@@ -93,13 +108,14 @@ public class UserDocServiceImpl implements UserDocService {
                         throw new RuntimeException("解密文件失败");
                     }
                     synchronized (this) {
-                        ftpUtils.sftp(filePath, userName);
+                        sftp.put(filePath, "/share/CACHEDEV2_DATA/homes/DOMAIN=ZY-IVD/" + userName, progressMonitor, Sftp.Mode.OVERWRITE);
                     }
                     countDownLatch.countDown();
                 });
                 future.get();
             }
             countDownLatch.await();
+            sftp.close();
             return "上传成功";
         } catch (IOException | InterruptedException e) {
             log.error("上传文件失败：" + e);
@@ -129,6 +145,7 @@ public class UserDocServiceImpl implements UserDocService {
             }
         }
         try {
+            Sftp sftp = JschUtil.createSftp(hostname, port, username, password);
             List<String> filePaths = new ArrayList<>();
             synchronized (this) {
                 for (MultipartFile file : files) {
@@ -160,11 +177,12 @@ public class UserDocServiceImpl implements UserDocService {
             for (String filePath : filePaths) {
                 if (webUtils.isSdFile(filePath)) {
                     log.info("该文件为加密文件");
-                    ftpUtils.sftp(filePath, userName);
+                    sftp.put(filePath, "/share/CACHEDEV2_DATA/homes/DOMAIN=ZY-IVD/" + userName, progressMonitor, Sftp.Mode.OVERWRITE);
                 } else {
                     log.info("该文件 not a 加密文件");
                 }
             }
+            sftp.close();
             return "上传成功";
         } catch (Exception e) {
             log.error("上传文件失败：" + e);

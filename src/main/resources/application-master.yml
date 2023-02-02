@@ -88,7 +88,7 @@ ad-manager:
   password: scye$197tkuyx75839
 
 ftp:
-  server: 192.168.9.5
+  server: 192.168.213.5
   port: 22
   userName: admin
   password: Qwer#1234
@@ -97,7 +97,7 @@ ftp:
 webService:
   endpoint: http://localhost:8280/?wsdl
   loginName: vdi-api
-  password: 123321@#AWzy
+  password: zFEHigD!DdBW#chN1NezC
 
 file:
   path: c:\test
