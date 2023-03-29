@@ -87,13 +87,6 @@ ad-manager:
   loginName: itadapi
   password: scye$197tkuyx75839
 
-ftp:
-  server: 192.168.213.5
-  port: 22
-  userName: admin
-  password: Qwer#1234
-  basePath: /home
-
 webService:
   endpoint: http://localhost:8280/?wsdl
   loginName: vdi-api

@@ -1,76 +1,78 @@
 package com.zybio.clouddesk.service.impl;
 
-import cn.hutool.extra.ssh.JschUtil;
-import cn.hutool.extra.ssh.Sftp;
+import cn.hutool.core.bean.BeanUtil;
+import com.alibaba.fastjson2.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.jcraft.jsch.SftpProgressMonitor;
+import com.purgeteam.cloud.dispose.starter.annotation.IgnoreResponseAdvice;
 import com.purgeteam.cloud.dispose.starter.exception.category.BusinessException;
 import com.zybio.clouddesk.config.EncryptConfig;
-import com.zybio.clouddesk.config.ProgressMonitor;
+import com.zybio.clouddesk.enums.FileOpsType;
 import com.zybio.clouddesk.enums.Regions;
+import com.zybio.clouddesk.kafka.producer.SendMessage;
+import com.zybio.clouddesk.mapper.BdFileRecordMapper;
+import com.zybio.clouddesk.pojo.domain.BdFileRecord;
+import com.zybio.clouddesk.pojo.dto.FileRecordDTO;
+import com.zybio.clouddesk.pojo.dto.PageDTO;
 import com.zybio.clouddesk.pojo.dto.RegionDTO;
+import com.zybio.clouddesk.pojo.form.FileRecordForm;
 import com.zybio.clouddesk.service.UserDocService;
 import com.zybio.clouddesk.utils.WebServiceUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.xml.rpc.ServiceException;
+import javax.annotation.Resource;
 import java.io.File;
-import java.io.IOException;
-import java.rmi.RemoteException;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
-public class UserDocServiceImpl implements UserDocService {
+public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRecord> implements UserDocService {
 
     @Value("${file.path}")
     private String filePath;
 
-    @Value("${ftp.server}")
-    private String hostname;
-    @Value("${ftp.port}")
-    private int port;
-    @Value("${ftp.userName}")
-    private String username;
-    @Value("${ftp.password}")
-    private String password;
+    @Value("${file.tempPath}")
+    private String tempFile;
 
-    private final SftpProgressMonitor progressMonitor = new ProgressMonitor();
+    @Value("${spring.kafka.template.default-topic}")
+    private String encodeTopic;
+
+    @Value("${spring.kafka.template.decode-topic}")
+    private String decodeTopic;
 
     @Autowired
     private WebServiceUtils webUtils;
+
+    @Resource
+    private BdFileRecordMapper bdFileRecordMapper;
+
+    @Autowired
+    private SendMessage send;
 
     private final LoadingCache<String, String> loginCache = Caffeine.newBuilder()
             .expireAfterWrite(1800, TimeUnit.SECONDS)
             .build(loginId -> webUtils.login(loginId));
 
-    private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
-            10,
-            50,
-            1L,
-            TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(100),
-            new ThreadPoolExecutor.AbortPolicy());
-
-    /**
-     * 解密文件上传
-     *
-     * @param files    文件集
-     * @param userName 登录名
-     * @return 执行结果
-     */
     @Override
-    public String decodeFiles(MultipartFile[] files, String userName) {
-        String basePath = filePath + "/" + userName;
+    public List<BdFileRecord> sendFile(MultipartFile[] files, String userName, FileOpsType optionType) {
+        String basePath = tempFile + "/" + userName;
         File fileDir = new File(basePath);
         if (!fileDir.exists()) {
             boolean res = fileDir.mkdirs();
@@ -78,117 +80,172 @@ public class UserDocServiceImpl implements UserDocService {
                 log.info("新建用户文件目录：" + basePath);
             }
         }
-        //建立线程池开始执行解密
-        //todo: 思考建立类全局线程池比较好还是方法内线程池比较好； 局部线程池，会有重复初始化以及销毁过程，而全局线程池如果把所有加密过程都交给它，高并发场景下可能会锁死响应
+
+        ArrayList<BdFileRecord> fileRecords = new ArrayList<>();
 
         try {
-            CountDownLatch countDownLatch = new CountDownLatch(files.length);
-            Sftp sftp = JschUtil.createSftp(hostname, port, username, password);
             for (MultipartFile file : files) {
                 String fileName = file.getOriginalFilename();
                 String filePath = fileDir + "\\" + fileName;
 
-                synchronized (this) {
-                    File res = new File(filePath);
-                    file.transferTo(res);
+                File res1 = new File(filePath);
+                file.transferTo(res1);
+
+                BdFileRecord record = new BdFileRecord();
+                record.setFile_name(fileName);
+                record.setUsername(userName);
+                record.setFile_path(filePath);
+                record.setStatus(0);
+                record.setCreated_at(ZonedDateTime.now());
+                record.setUpdated_at(ZonedDateTime.now());
+                bdFileRecordMapper.insert(record);
+                if (record.getId() == null || record.getId().isBlank()) {
+                    throw new Exception("保存操作队列出错");
                 }
-                Future<?> future = executor.submit(() -> {
-                    log.info(Thread.currentThread().getName() + "--- 开始解密文件" + filePath + new Date() + " ---");
-                    long res = 0;
-                    try {
-                        res = webUtils.decryptSdFile(loginCache.get("loginId"), filePath);
-                    } catch (ServiceException | RemoteException e) {
-                        log.error(Thread.currentThread().getName() + "--- 解密系统访问失败" + e + " ---");
-                        throw new RuntimeException(e);
-                    }
-                    if (res == 0) {
-                        log.info(Thread.currentThread().getName() + "--- 解密文件成功" + filePath + new Date() + " ---");
-                    } else {
-                        log.warn(Thread.currentThread().getName() + "--- 解密文件失败" + filePath + new Date() + " ---");
-                        throw new RuntimeException("解密文件失败");
-                    }
-                    synchronized (this) {
-                        sftp.put(filePath, "/share/CACHEDEV2_DATA/homes/DOMAIN=ZY-IVD/" + userName, progressMonitor, Sftp.Mode.OVERWRITE);
-                    }
-                    countDownLatch.countDown();
-                });
-                future.get();
+                fileRecords.add(record);
+                if (optionType == FileOpsType.DECODE_FILE) {
+                    send.sendMessage(decodeTopic, record);
+                } else {
+                    send.sendMessage(encodeTopic, record);
+                }
             }
-            countDownLatch.await();
-            sftp.close();
-            return "上传成功";
-        } catch (IOException | InterruptedException e) {
-            log.error("上传文件失败：" + e);
-            throw new BusinessException("500", "上传文件失败:" + e);
-        } catch (ExecutionException e) {
-            throw new BusinessException("500","上传文件失败:" + e);
+        } catch (Exception e) {
+            log.error("发送消息队列出错：" + e.getMessage());
+            throw new BusinessException("500", "发送消息队列出错：" + e.getMessage());
         }
+        return fileRecords;
     }
 
     /**
-     * 加密文件上传
+     * 加密监听
      *
-     * @param files         文件集
-     * @param userName      登录名
-     * @param region        安全区域
-     * @param securityLevel 安全级别
-     * @return 执行结果
+     * @param dto 加密消息队列
      */
     @Override
-    public String encodeFiles(MultipartFile[] files, String userName, Regions region, Integer securityLevel) {
-        String basePath = filePath + "/" + userName;
-        File fileDir = new File(basePath);
-        if (!fileDir.exists()) {
-            boolean res = fileDir.mkdirs();
-            if (res) {
-                log.info("新建用户文件目录：" + basePath);
+    public void encodeFiles(FileRecordDTO dto) {
+
+        String filePath = dto.getFile_path();
+        ArrayList<String> filePaths = new ArrayList<>();
+
+        File file = new File(filePath);
+        if (file.isFile()) {
+            filePaths.add(filePath);
+        } else {
+            log.error("读取不到文件，请检查文件路径");
+            dto.setError_message("读取不到文件，请检查文件路径");
+            dto.setStatus(-1);
+            updateStatus(dto);
+            return;
+        }
+
+        try {
+            String res = webUtils.encryptFile(loginCache.get("loginId"), filePaths, dto.getRegion().getValue(), dto.getSecurity_level());
+            if (!res.equals("0")) {
+                log.error("文件加密失败" + res);
+                dto.setError_message("文件加密失败" + res);
+                updateStatus(dto);
+                return;
+            } else {
+                log.info("加密文件完成");
             }
+        } catch (Exception e) {
+            log.error("加密调用发生异常：" + e.getMessage());
+            dto.setError_message("加密调用发生异常：" + e.getMessage());
+            dto.setStatus(-1);
+            updateStatus(dto);
+            return;
+        }
+        dto.setStatus(1);
+        updateStatus(dto);
+    }
+
+    /**
+     * 解密文件
+     *
+     * @param dto 记录dto
+     */
+    @Override
+    public void decodeFiles(FileRecordDTO dto) {
+        String filePath = dto.getFile_path();
+        File file = new File(filePath);
+        if (!file.isFile()) {
+            log.error("读取不到文件，请检查文件路径");
+            dto.setError_message("读取不到文件，请检查文件路径");
+            dto.setStatus(-1);
+            updateStatus(dto);
+            return;
         }
         try {
-            Sftp sftp = JschUtil.createSftp(hostname, port, username, password);
-            List<String> filePaths = new ArrayList<>();
-            synchronized (this) {
-                for (MultipartFile file : files) {
-                    String fileName = file.getOriginalFilename();
-                    String filePath = fileDir + "\\" + fileName;
-
-                    log.info("存入文件地址为：" + filePath);
-                    File res = new File(filePath);
-                    file.transferTo(res);
-//                    if (webUtils.isSdFile(filePath)) {
-//                        log.info("该文件为加密文件");
-//                    } else {
-//                        log.info("该文件 not a 加密文件");
-//                    }
-                    filePaths.add(filePath);
-                }
+            long res = webUtils.decryptSdFile(loginCache.get("loginId"), filePath);
+            if (res == 0) {
+                dto.setStatus(0);
+            } else {
+                dto.setStatus(-1);
+                log.error("文件加密失败" + res);
+                dto.setError_message("文件加密失败" + res);
+                updateStatus(dto);
+                return;
             }
-
-            log.info("开始加密文件");
-            synchronized (this) {
-                String res = webUtils.encryptFile(loginCache.get("loginId"), filePaths, region.getValue(), securityLevel);
-                if (!res.equals("0")) {
-                    throw new BusinessException("501", "文件加密失败" + res);
-                } else {
-                    log.info("加密文件完成");
-                }
-            }
-            log.info("开始上传文件");
-            for (String filePath : filePaths) {
-                if (webUtils.isSdFile(filePath)) {
-                    log.info("该文件为加密文件");
-                    sftp.put(filePath, "/share/CACHEDEV2_DATA/homes/DOMAIN=ZY-IVD/" + userName, progressMonitor, Sftp.Mode.OVERWRITE);
-                } else {
-                    log.info("该文件 not a 加密文件");
-                }
-            }
-            sftp.close();
-            return "上传成功";
         } catch (Exception e) {
-            log.error("上传文件失败：" + e);
-            throw new BusinessException("500", "上传文件失败:" + e);
+            log.error("解密文件出错：" + e.getMessage());
+            dto.setError_message("解密文件出错：" + e.getMessage());
+            dto.setStatus(-1);
+            updateStatus(dto);
+            return;
+        }
+        updateStatus(dto);
+    }
+
+    private boolean updateStatus(FileRecordDTO dto) {
+        BdFileRecord record = new BdFileRecord();
+        BeanUtil.copyProperties(dto, record);
+        return this.updateById(record);
+    }
+
+    @Override
+    public ResponseEntity<org.springframework.core.io.Resource> downloadFile(FileRecordForm dto, String username){
+        if (!dto.getUsername().equals(username)){
+            throw new BusinessException("403","您没有权限下载该文件");
+        }
+        File file = new File(dto.getFile_path());
+        try {
+            FileSystemResource resource = new FileSystemResource(file);
+
+            String contentType = null;
+
+            // Fallback to the default content type if type could not be determined
+            contentType = "application/octet-stream";
+
+            //设置响应头
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
+            headers.add("Content-Disposition", String.format("attachment; filename=\"%s\"", file.getName()));
+            headers.add("Pragma", "no-cache");
+            headers.add("Expires", "0");
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .headers(headers)
+                    .body(resource);
+        }catch (Exception e){
+            e.printStackTrace();
+            throw new BusinessException("500",e.getMessage());
         }
     }
+
+    @Override
+    public PageDTO<BdFileRecord> getRecords(String username, int pages, int pageSize, Integer status) {
+        QueryWrapper<BdFileRecord> pageWrapper = new QueryWrapper<>();
+        pageWrapper.eq("username",username);
+        if (status != null){
+            pageWrapper.eq("status",status);
+        }
+        pageWrapper.orderByDesc("updated_at");
+        IPage<BdFileRecord> page = new Page<>(pages,pageSize);
+        IPage<BdFileRecord> res = bdFileRecordMapper.selectPage(page, pageWrapper);
+        PageDTO<BdFileRecord> dto = new PageDTO<>(res.getRecords(),pageSize,pages,res.getTotal());
+        return dto;
+    }
+
 
     @Override
     public List<RegionDTO> getRegion() {

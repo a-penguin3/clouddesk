@@ -2,12 +2,21 @@ server:
   port: 8080
 
 spring:
+  kafka:
+    bootstrap-servers: 192.168.214.3:9092,192.168.214.3:9093,192.168.214.3:9094
+    consumer:
+      group-id: defaultConsumerGroup
+    producer:
+      retries: 1
+    template:
+      default-topic: encryptedFiles
+      decode-topic: decodeFiles
   datasource:
     url: jdbc:mysql://localhost:3306/rdp?useUnicode=true&characterEncoding=utf-8&useSSL=false
     username: root
     password: 123456
     druid:
-      url: jdbc:mysql://localhost:3306/cloud-desk?useUnicode=true&characterEncoding=utf-8&useSSL=false
+      url: jdbc:mysql://localhost:3306/rdp?useUnicode=true&characterEncoding=utf-8&useSSL=false
       username: root
       password: 123456
       ##-----------池大小设置-------------
@@ -89,13 +98,6 @@ ad-manager:
   loginName: itadapi
   password: scye$197tkuyx75839
 
-ftp:
-  server: 192.168.9.5
-  port: 22
-  userName: admin
-  password: Qwer#1234
-  basePath: /home
-
 webService:
   endpoint: http://localhost:8280/?wsdl
   loginName: vdi-api
@@ -103,4 +105,5 @@ webService:
 
 file:
   path: D:\test
+  tempPath: D:\test\temp
 
