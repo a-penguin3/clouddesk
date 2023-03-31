@@ -27,7 +27,11 @@ public class FileRecordDTO{
     @JSONField
     private Regions region;
     @JSONField
+    private Integer file_type;
+    @JSONField
     private Integer security_level;
     @JSONField
     private String error_message;
+    @JSONField
+    private long file_size;
 }

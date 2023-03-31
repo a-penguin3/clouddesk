@@ -14,5 +14,4 @@ public class PageDTO<T> {
     private Integer pageSize;
     private Integer pages;
     private Long totalCount;
-
 }

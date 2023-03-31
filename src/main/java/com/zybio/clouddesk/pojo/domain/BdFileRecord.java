@@ -24,4 +24,8 @@ public class BdFileRecord {
     private Integer security_level;
     private Regions region;
     private String error_message;
+    @TableField(insertStrategy = FieldStrategy.NOT_NULL)
+    private Integer file_type;
+    @TableField(insertStrategy = FieldStrategy.NOT_NULL)
+    private long file_size;
 }

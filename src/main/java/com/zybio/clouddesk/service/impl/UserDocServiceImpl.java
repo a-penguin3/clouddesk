@@ -1,14 +1,12 @@
 package com.zybio.clouddesk.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.purgeteam.cloud.dispose.starter.annotation.IgnoreResponseAdvice;
 import com.purgeteam.cloud.dispose.starter.exception.category.BusinessException;
 import com.zybio.clouddesk.config.EncryptConfig;
 import com.zybio.clouddesk.enums.FileOpsType;
@@ -20,13 +18,13 @@ import com.zybio.clouddesk.pojo.dto.FileRecordDTO;
 import com.zybio.clouddesk.pojo.dto.PageDTO;
 import com.zybio.clouddesk.pojo.dto.RegionDTO;
 import com.zybio.clouddesk.pojo.form.FileRecordForm;
+import com.zybio.clouddesk.pojo.form.UserDocForm;
 import com.zybio.clouddesk.service.UserDocService;
 import com.zybio.clouddesk.utils.WebServiceUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -70,8 +68,15 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
             .expireAfterWrite(1800, TimeUnit.SECONDS)
             .build(loginId -> webUtils.login(loginId));
 
+    /**
+     * 传输 文件
+     * @param files 文件流
+     * @param userName 用户名
+     * @param form 操作类型
+     * @return 文件集合
+     */
     @Override
-    public List<BdFileRecord> sendFile(MultipartFile[] files, String userName, FileOpsType optionType) {
+    public List<BdFileRecord> sendFile(MultipartFile[] files, String userName, UserDocForm form) {
         String basePath = tempFile + "/" + userName;
         File fileDir = new File(basePath);
         if (!fileDir.exists()) {
@@ -90,7 +95,6 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
 
                 File res1 = new File(filePath);
                 file.transferTo(res1);
-
                 BdFileRecord record = new BdFileRecord();
                 record.setFile_name(fileName);
                 record.setUsername(userName);
@@ -98,12 +102,26 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
                 record.setStatus(0);
                 record.setCreated_at(ZonedDateTime.now());
                 record.setUpdated_at(ZonedDateTime.now());
+                record.setFile_size(file.getSize());
+                record.setFile_type(form.getType() == FileOpsType.DECODE_FILE ? 1 : 0);
+
+                if (form.getType() == FileOpsType.ENCODE_FILE){
+                    if (form.getRegion() == null){
+                        throw new BusinessException("501","安全区域未填写");
+                    }
+                    record.setRegion(form.getRegion());
+                    if (form.getSecurityLevel() == null){
+                        throw new BusinessException("501","安全级别未填写");
+                    }
+                    record.setSecurity_level(form.getSecurityLevel());
+                }
+
                 bdFileRecordMapper.insert(record);
                 if (record.getId() == null || record.getId().isBlank()) {
                     throw new Exception("保存操作队列出错");
                 }
                 fileRecords.add(record);
-                if (optionType == FileOpsType.DECODE_FILE) {
+                if (form.getType() == FileOpsType.DECODE_FILE) {
                     send.sendMessage(decodeTopic, record);
                 } else {
                     send.sendMessage(encodeTopic, record);
@@ -126,6 +144,7 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
 
         String filePath = dto.getFile_path();
         ArrayList<String> filePaths = new ArrayList<>();
+        dto.setUpdated_at(ZonedDateTime.now());
 
         File file = new File(filePath);
         if (file.isFile()) {
@@ -156,6 +175,7 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
             return;
         }
         dto.setStatus(1);
+        dto.setFile_size(file.length());
         updateStatus(dto);
     }
 
@@ -168,6 +188,7 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
     public void decodeFiles(FileRecordDTO dto) {
         String filePath = dto.getFile_path();
         File file = new File(filePath);
+        dto.setUpdated_at(ZonedDateTime.now());
         if (!file.isFile()) {
             log.error("读取不到文件，请检查文件路径");
             dto.setError_message("读取不到文件，请检查文件路径");
@@ -193,13 +214,15 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
             updateStatus(dto);
             return;
         }
+        dto.setFile_size(file.length());
+        dto.setStatus(1);
         updateStatus(dto);
     }
 
-    private boolean updateStatus(FileRecordDTO dto) {
+    private void updateStatus(FileRecordDTO dto) {
         BdFileRecord record = new BdFileRecord();
         BeanUtil.copyProperties(dto, record);
-        return this.updateById(record);
+        this.updateById(record);
     }
 
     @Override
@@ -233,11 +256,14 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
     }
 
     @Override
-    public PageDTO<BdFileRecord> getRecords(String username, int pages, int pageSize, Integer status) {
+    public PageDTO<BdFileRecord> getRecords(String username, int pages, int pageSize, Integer status, Integer fileType) {
         QueryWrapper<BdFileRecord> pageWrapper = new QueryWrapper<>();
         pageWrapper.eq("username",username);
         if (status != null){
             pageWrapper.eq("status",status);
+        }
+        if (fileType != null){
+            pageWrapper.eq("file_type",fileType);
         }
         pageWrapper.orderByDesc("updated_at");
         IPage<BdFileRecord> page = new Page<>(pages,pageSize);

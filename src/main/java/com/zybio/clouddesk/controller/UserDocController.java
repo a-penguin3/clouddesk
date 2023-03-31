@@ -34,9 +34,15 @@ public class UserDocController {
             throw new BusinessException("500", "上传文件为空");
         }
         String userName = String.valueOf(request.getAttribute("userName"));
-        return userDocService.sendFile(form.getFiles(), userName, form.getType());
+        return userDocService.sendFile(form.getFiles(), userName, form);
     }
 
+    /**
+     * 下载文件
+     * @param form 提交表单
+     * @param request 请求
+     * @return 文件流
+     */
     @IgnoreResponseAdvice
     @PostMapping("/downloadFile")
     public ResponseEntity<Resource> download(@Valid @RequestBody FileRecordForm form, HttpServletRequest request) {
@@ -53,10 +59,11 @@ public class UserDocController {
             HttpServletRequest request,
             @RequestParam int pages,
             @RequestParam int pageSize,
-            @Nullable @RequestParam Integer status
+            @Nullable @RequestParam Integer status,
+            @RequestParam(value = "file_type") @Nullable Integer fileType
     ){
         String username = String.valueOf(request.getAttribute("userName"));
-        return userDocService.getRecords(username,pages,pageSize,status);
+        return userDocService.getRecords(username,pages,pageSize,status,fileType);
     }
 
 //    @GetMapping("/test")

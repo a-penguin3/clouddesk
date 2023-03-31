@@ -52,15 +52,4 @@ public class Receiver {
         service.decodeFiles(dto);
     }
 
-    private FileRecordDTO generateDTO(String message){
-        FileRecordDTO dto = JSONObject.parseObject(message,FileRecordDTO.class);
-        if (dto == null){
-            log.error("消息转义失败，不是标准的消息,请检查发送消息");
-            return null;
-        }
-        if (dto.getStatus() != 0){
-            return null;
-        }
-        return dto;
-    }
 }
