@@ -66,6 +66,13 @@ public class UserDocController {
         return userDocService.getRecords(username,pages,pageSize,status,fileType);
     }
 
+    @GetMapping("/getStatus")
+    public BdFileRecord getRecord(
+        @RequestParam String id
+    ){
+        return userDocService.getRecord(id);
+    }
+
 //    @GetMapping("/test")
 //    public String test(@RequestParam String message, HttpServletRequest request){
 //        send.sendMessage(message,String.valueOf(request.getAttribute("userName")),"encryptedFiles");

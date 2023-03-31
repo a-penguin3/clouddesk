@@ -23,5 +23,7 @@ public interface UserDocService {
 
     PageDTO<BdFileRecord> getRecords(String username, int pages, int pageSize, Integer status, Integer fileType);
 
+    BdFileRecord getRecord(String id);
+
     List<RegionDTO> getRegion();
 }

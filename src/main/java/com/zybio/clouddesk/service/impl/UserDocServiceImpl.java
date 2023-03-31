@@ -272,6 +272,18 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
         return dto;
     }
 
+    @Override
+    public BdFileRecord getRecord(String id){
+        if (id == null || id.isBlank()){
+            throw new BusinessException("500","输入空id");
+        }
+        BdFileRecord data = bdFileRecordMapper.selectById(id);
+        if (data == null){
+            throw new BusinessException("500","输入错误的id");
+        }
+        return data;
+    }
+
 
     @Override
     public List<RegionDTO> getRegion() {
