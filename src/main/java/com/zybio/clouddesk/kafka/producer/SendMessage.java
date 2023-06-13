@@ -27,7 +27,6 @@ public class SendMessage{
     private KafkaTemplate<String, String> kafkaTemplate;
 
 
-
     public void sendMessage(String topic, BdFileRecord record) {
         log.debug("开始发送请求");
         MyProducerListener listener = new MyProducerListener();

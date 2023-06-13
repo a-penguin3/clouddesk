@@ -70,6 +70,7 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
 
     /**
      * 传输 文件
+     * todo 更改文件落盘逻辑，改为生成缓存文件
      * @param files 文件流
      * @param userName 用户名
      * @param form 操作类型
@@ -162,6 +163,7 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
             if (!res.equals("0")) {
                 log.error("文件加密失败" + res);
                 dto.setError_message("文件加密失败" + res);
+                dto.setStatus(-1);
                 updateStatus(dto);
                 return;
             } else {

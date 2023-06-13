@@ -22,6 +22,15 @@ public class MyProducerListener implements ProducerListener {
     @Override
     public void onSuccess(ProducerRecord producerRecord, RecordMetadata recordMetadata) {
         log.info(producerRecord.topic() + "   发送成功!!");
+        String value = String.valueOf(producerRecord.value());
+        if (!value.equals("null")){
+            FileRecordDTO dto = JSONObject.parseObject(value,FileRecordDTO.class);
+            dto.setStatus(1);
+            BdFileRecord record = new BdFileRecord();
+            BeanUtil.copyProperties(dto,record);
+            mapper.updateById(record);
+            log.info("更新成功状态完成");
+        }
     }
 
     @Override
@@ -34,7 +43,7 @@ public class MyProducerListener implements ProducerListener {
             BdFileRecord record = new BdFileRecord();
             BeanUtil.copyProperties(dto,record);
             mapper.updateById(record);
-            log.info("更新状态完成");
+            log.info("更新失败状态完成");
         }
     }
 }

@@ -77,7 +77,7 @@ logging:
     com.zybio.clouddesk.mapper: debug
   file:
     name: clouddesk.log
-    path: C:/clouddesk/log
+    path: D:/clouddesk/log
 
 mybatis-plus:
   configuration:
@@ -102,6 +102,6 @@ webService:
   password: zFEHigD!DdBW#chN1NezC
 
 file:
-  path: c:\test
-  tempPath: c:\test\temp
+  path: D:\test
+  tempPath: D:\test\temp
 
