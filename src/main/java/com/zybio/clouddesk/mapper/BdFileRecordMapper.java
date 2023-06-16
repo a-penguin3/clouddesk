@@ -2,7 +2,6 @@ package com.zybio.clouddesk.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zybio.clouddesk.pojo.domain.BdFileRecord;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;

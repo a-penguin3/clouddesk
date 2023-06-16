@@ -16,7 +16,7 @@ public class Receiver {
     @Autowired
     private UserDocService service;
 
-    @KafkaListener(id = "encode-id",topics = "encryptedFiles",idIsGroup = false)
+    @KafkaListener(topics = "encryptedFiles")
     public void listen(@Payload String message){
         log.info("接受加密文件成功，开始加密：" + message);
         if (message.isBlank()){
@@ -34,7 +34,7 @@ public class Receiver {
         service.encodeFiles(dto);
     }
 
-    @KafkaListener(id = "decode-id",topics = "decodeFiles",idIsGroup = false)
+    @KafkaListener(topics = "decodeFiles")
     public void listenEncode(@Payload String message){
         log.info("接受解密文件成功，开始解密：" + message);
         if (message.isBlank()){

@@ -301,4 +301,8 @@ public class UserDocServiceImpl extends ServiceImpl<BdFileRecordMapper, BdFileRe
         });
         return res;
     }
+
+    public void updateStatus(BdFileRecord form){
+        bdFileRecordMapper.updateById(form);
+    }
 }

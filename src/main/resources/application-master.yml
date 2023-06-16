@@ -3,7 +3,7 @@ server:
 
 spring:
   kafka:
-    bootstrap-servers: 192.168.214.3:9092,192.168.214.3:9093,192.168.214.3:9094
+    bootstrap-servers: 192.168.250.96:9092,192.168.250.96:9093,192.168.250.96:9094
     consumer:
       group-id: defaultConsumerGroup
     producer:
